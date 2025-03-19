@@ -545,7 +545,9 @@ class LdapShell(cmd.Cmd):
             sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=target_entry['nTSecurityDescriptor'].raw_values[0])
         except IndexError:
             sd = self.create_empty_sd()
+
         sd['Dacl'].aces.append(self.create_allow_ace(grantee_sid))
+        self.client.modify(target.entry_dn, {'nTSecurityDescriptor':[ldap3.MODIFY_REPLACE, [sd.getData()]]}, controls=controls)
 
         self.client.modify(target_entry.entry_dn, {'nTSecurityDescriptor': [ldap3.MODIFY_REPLACE, [sd.getData()]]}, controls=controls)
         if self.client.result['result'] == 0:
@@ -747,7 +749,7 @@ class LdapShell(cmd.Cmd):
  grant_control [search_base] target grantee - Grant full control on a given target object (sAMAccountName or search filter, optional search base) to the grantee (sAMAccountName).
  set_dontreqpreauth user true/false - Set the don't require pre-authentication flag to true or false.
  set_rbcd target grantee - Grant the grantee (sAMAccountName) the ability to perform RBCD to the target (sAMAccountName).
-set_shadow_creds target - Set shadow credentials on the target object (sAMAccountName).
+ set_shadow_creds target - Set shadow credentials on the target object (sAMAccountName).
  start_tls - Send a StartTLS command to upgrade from LDAP to LDAPS. Use this to bypass channel binding for operations necessitating an encrypted channel.
  write_gpo_dacl user gpoSID - Write a full control ACE to the gpo for the given user. The gpoSID must be entered surrounding by {}.
  whoami - get connected user
