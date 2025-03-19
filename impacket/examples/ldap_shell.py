@@ -543,7 +543,9 @@ class LdapShell(cmd.Cmd):
             sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=target_entry['nTSecurityDescriptor'].raw_values[0])
         except IndexError:
             sd = self.create_empty_sd()
+
         sd['Dacl'].aces.append(self.create_allow_ace(grantee_sid))
+        self.client.modify(target.entry_dn, {'nTSecurityDescriptor':[ldap3.MODIFY_REPLACE, [sd.getData()]]}, controls=controls)
 
         self.client.modify(target_entry.entry_dn, {'nTSecurityDescriptor': [ldap3.MODIFY_REPLACE, [sd.getData()]]}, controls=controls)
         if self.client.result['result'] == 0:
