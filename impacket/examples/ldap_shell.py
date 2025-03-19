@@ -327,7 +327,7 @@ class LdapShell(cmd.Cmd):
         if len(self.client.entries) > 1:
             raise Exception('User name is not unique')
         user_sid = self.client.entries[0]['objectSid'].value
-        print(f'Resolved {user_name!r} to {user_sid}')
+        print(f'Resolved {user_name!r} to {user_sid!r}')
 
         self.client.search(search_base, search_filter, attributes=['nTSecurityDescriptor'], controls=controls)
         if not self.client.entries:
@@ -793,7 +793,7 @@ class LdapShell(cmd.Cmd):
  grant_control target grantee - Grant full control of a given target object (sAMAccountName) to the grantee (sAMAccountName).
  set_dontreqpreauth user true/false - Set the don't require pre-authentication flag to true or false.
  set_rbcd target grantee - Grant the grantee (sAMAccountName) the ability to perform RBCD to the target (sAMAccountName).
-set_shadow_creds target - Set shadow credentials on the target object (sAMAccountName).
+ set_shadow_creds target - Set shadow credentials on the target object (sAMAccountName).
  start_tls - Send a StartTLS command to upgrade from LDAP to LDAPS. Use this to bypass channel binding for operations necessitating an encrypted channel.
  write_gpo_dacl user gpoSID - Write a full control ACE to the gpo for the given user. The gpoSID must be entered surrounding by {}.
  whoami - get connected user
